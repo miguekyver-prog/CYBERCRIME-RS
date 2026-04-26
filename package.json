@@ -1,0 +1,24 @@
+{
+  "name": "my-app-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Full-stack app with Next.js frontend and Express backend",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "build": "npm run build:frontend && npm run build:backend",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "echo 'Backend is Express - no build needed'",
+    "start": "concurrently \"npm run start:frontend\" \"npm run start:backend\"",
+    "start:frontend": "cd frontend && npm run start",
+    "start:backend": "cd backend && npm run start",
+    "lint": "cd frontend && npm run lint",
+    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
+    "setup": "npm run install:all"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}
+
