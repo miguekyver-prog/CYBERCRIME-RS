@@ -1,9 +1,11 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
-export default function ResetPasswordPage() {
+export const dynamic = 'force-dynamic';
+
+function ResetPasswordContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
@@ -17,7 +19,6 @@ export default function ResetPasswordPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [tokenValid, setTokenValid] = useState(null);
 
-  // Validate token on mount
   useEffect(() => {
     if (!token) {
       setError('Invalid or missing reset token');
@@ -32,7 +33,6 @@ export default function ResetPasswordPage() {
     setError('');
     setSuccess('');
 
-    // Validation
     if (!password || !confirmPassword) {
       setError('Both password fields are required');
       return;
@@ -92,7 +92,6 @@ export default function ResetPasswordPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-indigo-50 px-6 font-sans">
       <div className="w-full max-w-md">
-        {/* Header Card */}
         <div className="text-center mb-10">
           <div className="inline-block mb-4 p-3 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-2xl">
             <span className="text-4xl">🔐</span>
@@ -101,7 +100,6 @@ export default function ResetPasswordPage() {
           <p className="text-slate-600 font-medium">Enter your new password</p>
         </div>
 
-        {/* Main Card */}
         <div className="bg-white rounded-2xl shadow-lg shadow-blue-100 border border-slate-100 overflow-hidden">
           <div className="p-8">
             {error && (
@@ -116,7 +114,6 @@ export default function ResetPasswordPage() {
             )}
 
             <form onSubmit={handleResetPassword} className="space-y-5">
-              {/* Password */}
               <div>
                 <label className="block text-sm font-semibold text-slate-800 mb-2">New Password</label>
                 <div className="relative">
@@ -137,7 +134,6 @@ export default function ResetPasswordPage() {
                 </div>
               </div>
 
-              {/* Confirm Password */}
               <div>
                 <label className="block text-sm font-semibold text-slate-800 mb-2">Confirm Password</label>
                 <div className="relative">
@@ -158,7 +154,6 @@ export default function ResetPasswordPage() {
                 </div>
               </div>
 
-              {/* Submit Button */}
               <button
                 type="submit"
                 disabled={loading}
@@ -177,5 +172,13 @@ export default function ResetPasswordPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={null}>
+      <ResetPasswordContent />
+    </Suspense>
   );
 }
