@@ -2,16 +2,16 @@ import nodemailer from 'nodemailer';
 import { db } from './db.js';
 import dotenv from 'dotenv';
 
-dotenv.config({ path: '.env.local' });
+dotenv.config(); // ← removed .env.local
 
 // Create transporter with email service configuration
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.EMAIL_PORT || '587'),
-  secure: process.env.EMAIL_PORT === '465',
+  port: parseInt(process.env.EMAIL_PORT || '465'),
+  secure: true, // ← always true for port 465
   auth: {
-    user: process.env.EMAIL_USER || 'your-email@gmail.com',
-    pass: process.env.EMAIL_PASS || 'your-app-password'
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
   }
 });
 
@@ -22,7 +22,7 @@ const transporter = nodemailer.createTransport({
     console.log('✅ Email service is connected and ready');
   } catch (error) {
     console.error('❌ Email service connection failed:', error.message);
-    console.error('   Check your EMAIL_HOST, EMAIL_PORT, EMAIL_USER, and EMAIL_PASS in .env.local');
+    console.error('   Check your EMAIL_HOST, EMAIL_PORT, EMAIL_USER, and EMAIL_PASS in Railway Variables');
   }
 })();
 
@@ -55,7 +55,7 @@ export async function sendReportEmail(reportData) {
     });
 
     const mailOptions = {
-      from: process.env.EMAIL_USER || 'noreply@crs.app',
+      from: process.env.EMAIL_USER,
       to: authorityEmail,
       subject: reportData.subject || `New Report Submitted - ${submissionTime}`,
       html: `
