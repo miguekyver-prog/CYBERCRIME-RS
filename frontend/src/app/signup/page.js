@@ -26,7 +26,6 @@ export default function SignupPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [googleReady, setGoogleReady] = useState(false);
 
-  // ✅ FIX: Use environment variable instead of hard-coded localhost
   const API_URL = process.env.NEXT_PUBLIC_API_URL || '${process.env.NEXT_PUBLIC_API_URL}';
 
   const handleGoogleSignupCallback = useCallback(async (response) => {
@@ -68,7 +67,6 @@ export default function SignupPage() {
     callbackRef.current = handleGoogleSignupCallback;
   }, [handleGoogleSignupCallback]);
 
-  // ✅ FIX: Initialize Google only (no renderButton here)
   useEffect(() => {
     if (googleInitialized.current) return;
 
@@ -93,11 +91,11 @@ export default function SignupPage() {
               }
             },
             auto_select: false,
-            use_fedcm_for_prompt: false, // ✅ FIX: Prevents FedCM AbortError
+            use_fedcm_for_prompt: false,
           });
 
           googleInitialized.current = true;
-          setGoogleReady(true); // ✅ FIX: Set ready first, render button after DOM updates
+          setGoogleReady(true);
           console.log('✅ Google Sign-Up initialized successfully');
         } catch (error) {
           console.error('❌ Google initialization error:', error);
@@ -120,7 +118,6 @@ export default function SignupPage() {
     };
   }, []);
 
-  // ✅ FIX: Render Google button AFTER googleReady is true and DOM element exists
   useEffect(() => {
     if (!googleReady) return;
     if (!window.google?.accounts?.id) return;
@@ -139,7 +136,6 @@ export default function SignupPage() {
       }
     };
 
-    // Small delay to ensure DOM has painted the button container
     setTimeout(renderBtn, 100);
   }, [googleReady]);
 
@@ -169,7 +165,7 @@ export default function SignupPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          fullName: formData.fullName,
+          full_name: formData.fullName, // ✅ Fixed: was 'fullName', backend expects 'full_name'
           email: formData.email,
           contactNumber: formData.contactNumber,
           password: formData.password,
@@ -340,7 +336,6 @@ export default function SignupPage() {
               <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent"></div>
             </div>
 
-            {/* ✅ FIX: Only official Google button, with proper sizing */}
             {!googleReady ? (
               <div className="w-full flex justify-center py-4">
                 <div className="text-center">
