@@ -30,7 +30,6 @@ const upload = multer({
   dest: uploadsDir,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
-    // Allow any file type for now
     cb(null, true);
   }
 });
@@ -61,7 +60,7 @@ const validateEmail = (email) => {
 app.post('/api/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    
+
     if (!email || !email.trim()) {
       return res.status(400).json({ error: 'Email is required' });
     }
@@ -131,7 +130,6 @@ app.post('/api/google-login', async (req, res) => {
     console.log("📋 Client ID:", clientId);
     console.log("🔐 Token length:", token.length);
 
-    // Verify the Google token
     let ticket;
     try {
       ticket = await googleClient.verifyIdToken({
@@ -141,8 +139,6 @@ app.post('/api/google-login', async (req, res) => {
       console.log("✅ Token verified successfully");
     } catch (verifyError) {
       console.error("❌ Token verification failed:", verifyError.message);
-      console.error("Verify error code:", verifyError.code);
-      console.error("Verify error details:", verifyError);
       return res.status(401).json({ error: 'Token verification failed: ' + verifyError.message });
     }
 
@@ -156,7 +152,6 @@ app.post('/api/google-login', async (req, res) => {
     console.log("👤 Full Name:", fullName);
     console.log("🔑 Google ID:", googleId);
 
-    // Check if user exists
     let existingUsers;
     try {
       [existingUsers] = await db.execute(
@@ -171,20 +166,14 @@ app.post('/api/google-login', async (req, res) => {
 
     let user;
     if (existingUsers.length > 0) {
-      // User exists, return their info
       user = existingUsers[0];
       console.log("✅ Existing user logged in via Google:", fullName);
     } else {
-      // Create new user from Google data
       try {
         const hashedPassword = await bcrypt.hash(Math.random().toString(36).slice(-15), 10);
         const username = email.split('@')[0] + '_' + Math.random().toString(36).slice(2, 6);
-        
+
         console.log("🆕 Creating new user...");
-        console.log("  Username:", username);
-        console.log("  Email:", email);
-        console.log("  Full Name:", fullName);
-        
         const [insertResult] = await db.execute(
           'INSERT INTO user (Full_Name, Email, Username, Password) VALUES (?, ?, ?, ?)',
           [fullName, email, username, hashedPassword]
@@ -199,12 +188,10 @@ app.post('/api/google-login', async (req, res) => {
         console.log("✅ New user created via Google, ID:", user.UserID);
       } catch (insertError) {
         console.error("❌ User creation failed:", insertError.message);
-        console.error("Insert error code:", insertError.code);
         return res.status(500).json({ error: 'User creation failed: ' + insertError.message });
       }
     }
 
-    console.log("📦 Sending response with user data...");
     res.json({
       message: 'Google login successful',
       user: {
@@ -215,8 +202,7 @@ app.post('/api/google-login', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("❌ Google login error (catch block):", error.message);
-    console.error("Error stack:", error.stack);
+    console.error("❌ Google login error:", error.message);
     res.status(401).json({ error: 'Invalid token or Google login failed: ' + error.message });
   }
 });
@@ -283,9 +269,9 @@ app.post('/api/forgot-password', async (req, res) => {
       return res.status(404).json({ error: 'No account found with this email' });
     }
 
-    const resetToken = Math.random().toString(36).substring(2, 15) + 
-                      Math.random().toString(36).substring(2, 15);
-    
+    const resetToken = Math.random().toString(36).substring(2, 15) +
+                       Math.random().toString(36).substring(2, 15);
+
     await db.execute(
       'UPDATE `user` SET reset_token = ?, reset_token_expires = DATE_ADD(NOW(), INTERVAL 1 HOUR) WHERE UserID = ?',
       [resetToken, users[0].UserID]
@@ -361,7 +347,6 @@ app.post('/api/report', upload.single('evidence'), async (req, res) => {
 
     const reportId = result.insertId;
 
-    // Only send email if authority was selected
     if (authorityId) {
       const [authority] = await db.execute(
         'SELECT Email, Agency_Name FROM authority WHERE AuthorityID = ?',
@@ -369,7 +354,7 @@ app.post('/api/report', upload.single('evidence'), async (req, res) => {
       );
 
       if (authority.length > 0) {
-        await sendReportEmail({ 
+        await sendReportEmail({
           authorityEmail: authority[0].Email,
           authorityName: authority[0].Agency_Name,
           title: title,
@@ -423,12 +408,12 @@ app.get('/api/authority', async (req, res) => {
     const { userId } = req.query;
     let query = 'SELECT AuthorityID, Agency_Name, Email, Contact_Person, Phone FROM authority';
     const params = [];
-    
+
     if (userId) {
       query += ' WHERE user_id = ?';
       params.push(userId);
     }
-    
+
     const [authorities] = await db.execute(query, params);
     res.json(authorities);
   } catch (error) {
@@ -459,17 +444,17 @@ app.get('/api/authority/:id', async (req, res) => {
 app.post('/api/authority', async (req, res) => {
   try {
     const { agencyName, email, contactPerson, phone, userId } = req.body;
-    
+
     if (!agencyName || !email) {
       return res.status(400).json({ error: 'Agency name and email are required' });
     }
-    
+
     const [result] = await db.execute(
       'INSERT INTO authority (Agency_Name, Email, Contact_Person, Phone, user_id) VALUES (?, ?, ?, ?, ?)',
       [agencyName, email, contactPerson || null, phone || null, userId]
     );
-    
-    res.status(201).json({ 
+
+    res.status(201).json({
       AuthorityID: result.insertId,
       Agency_Name: agencyName,
       Email: email,
@@ -486,17 +471,17 @@ app.put('/api/authority/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { agencyName, email, contactPerson, phone } = req.body;
-    
+
     if (!agencyName || !email) {
       return res.status(400).json({ error: 'Agency name and email are required' });
     }
-    
+
     await db.execute(
       'UPDATE authority SET Agency_Name = ?, Email = ?, Contact_Person = ?, Phone = ? WHERE AuthorityID = ?',
       [agencyName, email, contactPerson || null, phone || null, id]
     );
-    
-    res.json({ 
+
+    res.json({
       AuthorityID: id,
       Agency_Name: agencyName,
       Email: email,
@@ -512,9 +497,7 @@ app.put('/api/authority/:id', async (req, res) => {
 app.delete('/api/authority/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    
     await db.execute('DELETE FROM authority WHERE AuthorityID = ?', [id]);
-    
     res.json({ message: 'Authority deleted successfully' });
   } catch (error) {
     console.error("Delete authority error:", error);
@@ -522,13 +505,13 @@ app.delete('/api/authority/:id', async (req, res) => {
   }
 });
 
-// ============= SETTINGS ROUTE =============
+// ============= SETTINGS ROUTES =============
 app.get('/api/settings', async (req, res) => {
   try {
-    res.json({ 
+    res.json({
       theme: 'light',
       language: 'en',
-      notifications: true 
+      notifications: true
     });
   } catch (error) {
     console.error("Settings error:", error);
@@ -538,68 +521,93 @@ app.get('/api/settings', async (req, res) => {
 
 app.post('/api/settings', async (req, res) => {
   try {
-    const { userId, firstName, lastName, email, phone, password } = req.body;
-    
+    const { userId, firstName, lastName, fullName, email, phone, password } = req.body;
+
     if (!userId || !email) {
       return res.status(400).json({ error: 'User ID and email are required' });
     }
-    
-    let updateQuery = 'UPDATE user SET Full_Name = ?, Email = ?, Contact_Number = ? WHERE UserID = ?';
-    const params = [`${firstName} ${lastName}`, email, phone || null, userId];
-    
-    if (password) {
-      const hashedPassword = await bcrypt.hash(password, 10);
-      updateQuery = 'UPDATE user SET Full_Name = ?, Email = ?, Contact_Number = ?, Password = ? WHERE UserID = ?';
-      params.splice(3, 0, hashedPassword);
+
+    // Support both fullName (single field) and firstName + lastName (two fields)
+    let resolvedName = null;
+    if (fullName && fullName.trim()) {
+      resolvedName = fullName.trim();
+    } else if (firstName || lastName) {
+      resolvedName = `${firstName || ''} ${lastName || ''}`.trim();
     }
-    
-    await db.execute(updateQuery, params);
-    
-    res.json({ message: 'Settings updated successfully' });
+
+    if (!resolvedName) {
+      return res.status(400).json({ error: 'Full name is required' });
+    }
+
+    if (password) {
+      if (password.length < 8) {
+        return res.status(400).json({ error: 'Password must be at least 8 characters' });
+      }
+
+      // ✅ Fixed: explicit separate query — no more splice() bug
+      const hashedPassword = await bcrypt.hash(password, 10);
+      await db.execute(
+        'UPDATE user SET Full_Name = ?, Email = ?, Contact_Number = ?, Password = ? WHERE UserID = ?',
+        [resolvedName, email, phone || null, hashedPassword, userId]
+      );
+    } else {
+      await db.execute(
+        'UPDATE user SET Full_Name = ?, Email = ?, Contact_Number = ? WHERE UserID = ?',
+        [resolvedName, email, phone || null, userId]
+      );
+    }
+
+    // Return updated user data so frontend can refresh its local state
+    const [updatedUser] = await db.execute(
+      'SELECT UserID, Full_Name, Email, Contact_Number FROM user WHERE UserID = ?',
+      [userId]
+    );
+
+    res.json({
+      message: 'Settings updated successfully',
+      user: updatedUser[0] || null
+    });
   } catch (error) {
     console.error("Update settings error:", error);
     res.status(500).json({ error: 'Failed to update settings' });
   }
 });
 
+// ============= FIX / FORWARD REPORT ROUTE =============
 app.post('/api/fix', async (req, res) => {
   try {
     const { reportId, authorityId, userId } = req.body;
-    
+
     if (!reportId || !authorityId) {
       return res.status(400).json({ error: 'Report ID and Authority ID are required' });
     }
-    
-    // Update report to mark it as forwarded to authority
+
     await db.execute(
       'UPDATE report SET AuthorityID = ?, Status = "forwarded" WHERE ReportID = ?',
       [authorityId, reportId]
     );
-    
-    // Get report and authority details for email
+
     const [report] = await db.execute(
       'SELECT Incident_Description as description FROM report WHERE ReportID = ?',
       [reportId]
     );
-    
+
     const [authority] = await db.execute(
       'SELECT Email, Agency_Name FROM authority WHERE AuthorityID = ?',
       [authorityId]
     );
-    
+
     if (report.length > 0 && authority.length > 0) {
       try {
         await sendReportEmail(authority[0].Email, {
           agencyName: authority[0].Agency_Name,
-          reportTitle: report[0].title,
           reportDescription: report[0].description
         });
       } catch (emailError) {
         console.warn('Email notification failed:', emailError.message);
-        // Don't fail the request if email fails
       }
     }
-    
+
     res.json({ message: 'Report forwarded successfully' });
   } catch (error) {
     console.error("Forward report error:", error);
