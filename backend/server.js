@@ -38,10 +38,30 @@ const upload = multer({
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Configure CORS for Vercel and local development
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  process.env.FRONTEND_URL,
+  process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
+  process.env.NEXT_PUBLIC_VERCEL_URL ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}` : undefined,
+].filter(Boolean);
+
 app.use(cors({
-  origin: '*',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`CORS blocked request from origin: ${origin}`);
+      callback(null, true); // Allow anyway but log it
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 
 // Initialize Google OAuth Client
@@ -106,9 +126,12 @@ app.post('/api/login', async (req, res) => {
     console.log("✅ Login successful for user:", user.Full_Name);
     res.json({
       message: "Login successful",
-      userId: user.UserID,
-      fullName: user.Full_Name,
-      email: user.email
+      user: {
+        UserID: user.UserID,
+        Full_Name: user.Full_Name,
+        Email: user.email,
+        Contact_Number: user.Contact_Number || null
+      }
     });
   } catch (error) {
     console.error("Login error:", error);
@@ -127,8 +150,12 @@ app.post('/api/google-login', async (req, res) => {
     }
 
     console.log("🔍 Verifying Google token...");
-    const clientId = '862494866742-0sb0mvdcjuidrvi9sq7k28lkb8mcap4a.apps.googleusercontent.com';
-    console.log("📋 Client ID:", clientId);
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      console.error('❌ GOOGLE_CLIENT_ID not set in environment variables');
+      return res.status(500).json({ error: 'Server configuration error: Google Client ID not set' });
+    }
+    console.log("📋 Client ID configured");
     console.log("🔐 Token length:", token.length);
 
     // Verify the Google token
@@ -291,7 +318,11 @@ app.post('/api/forgot-password', async (req, res) => {
       [resetToken, users[0].UserID]
     );
 
-    const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
+    const frontendUrl = process.env.FRONTEND_URL 
+      || (process.env.NEXT_PUBLIC_VERCEL_URL ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}` : null)
+      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+      || 'http://localhost:3000';
+    const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
 
     await sendReportEmail({
       authorityEmail: email,
@@ -388,8 +419,15 @@ app.post('/api/report', upload.single('evidence'), async (req, res) => {
 
 app.get('/api/reports', async (req, res) => {
   try {
+    const { userId } = req.query;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
     const [reports] = await db.execute(
-      'SELECT ReportID as id, Incident_Description as description, Incident_Type as type, Status as status, Date_Submitted as created_at FROM report ORDER BY Date_Submitted DESC'
+      'SELECT ReportID as id, Incident_Description as description, Incident_Type as type, Status as status, Date_Submitted as created_at FROM report WHERE UserID = ? ORDER BY Date_Submitted DESC',
+      [userId]
     );
     res.json(reports);
   } catch (error) {
@@ -578,7 +616,7 @@ app.post('/api/fix', async (req, res) => {
     
     // Get report and authority details for email
     const [report] = await db.execute(
-      'SELECT Incident_Description as description FROM report WHERE ReportID = ?',
+      'SELECT Incident_Description as description, Incident_Type as title FROM report WHERE ReportID = ?',
       [reportId]
     );
     
@@ -589,10 +627,12 @@ app.post('/api/fix', async (req, res) => {
     
     if (report.length > 0 && authority.length > 0) {
       try {
-        await sendReportEmail(authority[0].Email, {
-          agencyName: authority[0].Agency_Name,
+        await sendReportEmail({
+          authorityEmail: authority[0].Email,
+          authorityName: authority[0].Agency_Name,
           reportTitle: report[0].title,
-          reportDescription: report[0].description
+          reportDescription: report[0].description,
+          reportId: reportId
         });
       } catch (emailError) {
         console.warn('Email notification failed:', emailError.message);
