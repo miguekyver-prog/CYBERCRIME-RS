@@ -388,8 +388,15 @@ app.post('/api/report', upload.single('evidence'), async (req, res) => {
 
 app.get('/api/reports', async (req, res) => {
   try {
+    const { userId } = req.query;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
     const [reports] = await db.execute(
-      'SELECT ReportID as id, Incident_Description as description, Incident_Type as type, Status as status, Date_Submitted as created_at FROM report ORDER BY Date_Submitted DESC'
+      'SELECT ReportID as id, Incident_Description as description, Incident_Type as type, Status as status, Date_Submitted as created_at FROM report WHERE UserID = ? ORDER BY Date_Submitted DESC',
+      [userId]
     );
     res.json(reports);
   } catch (error) {
@@ -578,7 +585,7 @@ app.post('/api/fix', async (req, res) => {
     
     // Get report and authority details for email
     const [report] = await db.execute(
-      'SELECT Incident_Description as description FROM report WHERE ReportID = ?',
+      'SELECT Incident_Description as description, Incident_Type as title FROM report WHERE ReportID = ?',
       [reportId]
     );
     
@@ -589,10 +596,12 @@ app.post('/api/fix', async (req, res) => {
     
     if (report.length > 0 && authority.length > 0) {
       try {
-        await sendReportEmail(authority[0].Email, {
-          agencyName: authority[0].Agency_Name,
+        await sendReportEmail({
+          authorityEmail: authority[0].Email,
+          authorityName: authority[0].Agency_Name,
           reportTitle: report[0].title,
-          reportDescription: report[0].description
+          reportDescription: report[0].description,
+          reportId: reportId
         });
       } catch (emailError) {
         console.warn('Email notification failed:', emailError.message);
