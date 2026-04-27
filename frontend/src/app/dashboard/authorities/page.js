@@ -159,7 +159,7 @@ export default function AuthoritiesPage() {
     }
 
     try {
-      const url = editingId ? `${process.env.NEXT_PUBLIC_API_URL}/api/authority/${editingId}` : '${process.env.NEXT_PUBLIC_API_URL}/api/authority';
+      const url = editingId ? `${process.env.NEXT_PUBLIC_API_URL}/api/authority/${editingId}` : `${process.env.NEXT_PUBLIC_API_URL}/api/authority`;
       const method = editingId ? 'PUT' : 'POST';
 
       const payload = {
