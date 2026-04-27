@@ -241,7 +241,7 @@ app.post('/api/signup', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     await db.execute(
-      'INSERT INTO `user` (Email, Password, full_name, created_at) VALUES (?, ?, ?, NOW())',
+      'INSERT INTO `user` (Email, Password, Full_Name, created_at) VALUES (?, ?, ?, NOW())',
       [email, hashedPassword, full_name]
     );
 
