@@ -127,8 +127,6 @@ app.post('/api/google-login', async (req, res) => {
 
     console.log("🔍 Verifying Google token...");
     const clientId = '862494866742-0sb0mvdcjuidrvi9sq7k28lkb8mcap4a.apps.googleusercontent.com';
-    console.log("📋 Client ID:", clientId);
-    console.log("🔐 Token length:", token.length);
 
     let ticket;
     try {
@@ -149,8 +147,6 @@ app.post('/api/google-login', async (req, res) => {
     const picture = payload.picture;
 
     console.log("✅ Google Token verified for:", email);
-    console.log("👤 Full Name:", fullName);
-    console.log("🔑 Google ID:", googleId);
 
     let existingUsers;
     try {
@@ -158,7 +154,6 @@ app.post('/api/google-login', async (req, res) => {
         'SELECT UserID, Full_Name, Email, Contact_Number FROM user WHERE Email = ?',
         [email]
       );
-      console.log("📊 Database query successful, found", existingUsers.length, "user(s)");
     } catch (dbError) {
       console.error("❌ Database query failed:", dbError.message);
       return res.status(500).json({ error: 'Database error: ' + dbError.message });
@@ -173,7 +168,6 @@ app.post('/api/google-login', async (req, res) => {
         const hashedPassword = await bcrypt.hash(Math.random().toString(36).slice(-15), 10);
         const username = email.split('@')[0] + '_' + Math.random().toString(36).slice(2, 6);
 
-        console.log("🆕 Creating new user...");
         const [insertResult] = await db.execute(
           'INSERT INTO user (Full_Name, Email, Username, Password) VALUES (?, ?, ?, ?)',
           [fullName, email, username, hashedPassword]
@@ -210,7 +204,10 @@ app.post('/api/google-login', async (req, res) => {
 // ============= SIGNUP ROUTE =============
 app.post('/api/signup', async (req, res) => {
   try {
-    const { email, password, full_name } = req.body;
+    const { email, password } = req.body;
+
+    // ✅ Accept fullName, full_name, or name — works with any frontend
+    const full_name = req.body.full_name || req.body.fullName || req.body.name;
 
     if (!email || !email.trim()) {
       return res.status(400).json({ error: 'Email is required' });
@@ -544,7 +541,6 @@ app.post('/api/settings', async (req, res) => {
         return res.status(400).json({ error: 'Password must be at least 8 characters' });
       }
 
-      // ✅ Fixed: explicit separate query — no more splice() bug
       const hashedPassword = await bcrypt.hash(password, 10);
       await db.execute(
         'UPDATE user SET Full_Name = ?, Email = ?, Contact_Number = ?, Password = ? WHERE UserID = ?',
