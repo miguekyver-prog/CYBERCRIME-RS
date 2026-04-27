@@ -248,7 +248,7 @@ app.post('/api/signup', async (req, res) => {
     res.json({ message: 'Signup successful. You can now login.' });
   } catch (error) {
     console.error("Signup error:", error);
-    res.status(500).json({ error: error.message });
+   res.status(500).json({ error: error.message });
   }
 });
 
