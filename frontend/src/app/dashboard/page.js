@@ -115,12 +115,23 @@ export default function Dashboard() {
 
       const savedUser = localStorage.getItem("user");
 
-      if (!savedUser) {
-        setLoading(false);
-        return;
-      }
+if (!savedUser || savedUser === 'undefined' || savedUser === 'null') {
+  setLoading(false);
+  return;
+}
 
-      const parsedUser = JSON.parse(savedUser);
+let parsedUser;
+try {
+  parsedUser = JSON.parse(savedUser);
+} catch {
+  setLoading(false);
+  return;
+}
+
+if (!parsedUser) {
+  setLoading(false);
+  return;
+}
       setUser(parsedUser);
 
       const userId = parsedUser.UserID;
