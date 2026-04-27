@@ -173,6 +173,11 @@ app.post('/api/google-login', async (req, res) => {
         const hashedPassword = await bcrypt.hash(Math.random().toString(36).slice(-15), 10);
         const username = email.split('@')[0] + '_' + Math.random().toString(36).slice(2, 6);
 
+await db.execute(
+  'INSERT INTO `user` (Email, Password, Full_Name, Username, created_at) VALUES (?, ?, ?, ?, NOW())',
+  [email, hashedPassword, full_name, username]
+);
+
         console.log("🆕 Creating new user...");
         const [insertResult] = await db.execute(
           'INSERT INTO user (Full_Name, Email, Username, Password) VALUES (?, ?, ?, ?)',
