@@ -19,7 +19,7 @@ function Toast({ toasts }) {
           `}
           style={{ animation: 'slideIn 0.4s ease-out forwards' }}
         >
-          <span className="text-lg mt-0.5 shrink-0 animate-bounce" style={{ animationDelay: '0s' }}>
+          <span className="text-lg mt-0.5 shrink-0">
             {toast.type === 'success' ? '✅' : toast.type === 'error' ? '❌' : 'ℹ️'}
           </span>
           <div className="flex flex-col gap-0.5 flex-1">
@@ -40,25 +40,15 @@ function Toast({ toasts }) {
 
       <style jsx>{`
         @keyframes slideIn {
-          from {
-            opacity: 0;
-            transform: translateX(400px);
-          }
-          to {
-            opacity: 1;
-            transform: translateX(0);
-          }
+          from { opacity: 0; transform: translateX(400px); }
+          to { opacity: 1; transform: translateX(0); }
         }
         @keyframes bounce {
           0%, 100% { transform: scale(1); }
           50% { transform: scale(1.2); }
         }
-        .animate-slide-in {
-          animation: slideIn 0.4s ease-out forwards;
-        }
-        .animate-bounce {
-          animation: bounce 0.6s infinite;
-        }
+        .animate-slide-in { animation: slideIn 0.4s ease-out forwards; }
+        .animate-bounce { animation: bounce 0.6s infinite; }
       `}</style>
     </div>
   );
@@ -66,13 +56,11 @@ function Toast({ toasts }) {
 
 function DeleteModal({ isOpen, reportId, onConfirm, onCancel, isLoading }) {
   if (!isOpen) return null;
-  
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in">
-      <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl animate-slide-up">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
         <h3 className="text-lg font-bold text-slate-900 mb-2">Delete Report #{reportId}</h3>
         <p className="text-slate-600 mb-6">Are you sure you want to delete this report? This action cannot be undone.</p>
-        
         <div className="flex gap-3">
           <button
             onClick={onCancel}
@@ -97,37 +85,15 @@ function DeleteModal({ isOpen, reportId, onConfirm, onCancel, isLoading }) {
           </button>
         </div>
       </div>
-
-      <style jsx>{`
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes slideUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .animate-fade-in {
-          animation: fadeIn 0.2s ease-out;
-        }
-        .animate-slide-up {
-          animation: slideUp 0.3s ease-out;
-        }
-      `}</style>
     </div>
   );
 }
 
 export default function Dashboard() {
-  useProtectedRoute(); // Redirect to login if not authenticated
+  useProtectedRoute();
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [user, setUser] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, reportId: null });
@@ -144,27 +110,37 @@ export default function Dashboard() {
   useEffect(() => {
     const initDashboard = async () => {
       setLoading(true);
-      setReports([]); // Clear previous user's state
-      
+      setError('');
+      setReports([]);
+
       const savedUser = localStorage.getItem("user");
-      
-      if (savedUser) {
-        const parsedUser = JSON.parse(savedUser);
-        setUser(parsedUser);
-        
-        const userId = parsedUser.UserID;
-        
+
+      if (!savedUser) {
+        setLoading(false);
+        return;
+      }
+
+      const parsedUser = JSON.parse(savedUser);
+      setUser(parsedUser);
+
+      const userId = parsedUser.UserID;
+
+      if (userId !== null && userId !== undefined) {
         try {
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/reports?userId=${userId}`);
-  const data = await response.json();
-  if (Array.isArray(data)) {
-    setReports(data);
-  }
-} catch (err) {
-  console.error('Failed to fetch reports:', err);
-}
+          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/reports?userId=${userId}`);
+          if (!response.ok) {
+            throw new Error(`Server returned ${response.status}`);
+          }
+          const data = await response.json();
+          if (Array.isArray(data)) {
+            setReports(data);
+          }
+        } catch (err) {
+          console.error('Failed to fetch reports:', err);
+          setError('Failed to load reports. Please refresh the page.');
         }
       }
+
       setLoading(false);
     };
 
@@ -185,21 +161,20 @@ export default function Dashboard() {
         setDeleteModal({ isOpen: false, reportId: null });
         showToast(`Report #${reportId} deleted successfully`, 'success', 3000);
       } else {
-        const error = await response.json();
-        showToast(`Error: ${error.error || 'Failed to delete report'}`, 'error', 3500);
+        const err = await response.json();
+        showToast(`Error: ${err.error || 'Failed to delete report'}`, 'error', 3500);
       }
-    } catch (error) {
-      console.error('Delete error:', error);
+    } catch (err) {
+      console.error('Delete error:', err);
       showToast('Failed to delete report', 'error', 3000);
     } finally {
       setDeleting(null);
     }
   };
 
-  // Calculate counts from filtered results
   const totalReports = reports.length;
-  const forwarded = reports.filter(r => r.Status === 'Forwarded').length;
-  const inProgress = reports.filter(r => r.Status !== 'Forwarded').length;
+  const forwarded = reports.filter(r => r.status === 'forwarded' || r.Status === 'Forwarded').length;
+  const inProgress = reports.filter(r => r.status !== 'forwarded' && r.Status !== 'Forwarded').length;
 
   if (loading) return <div className="p-20 text-center font-sans">Syncing reports...</div>;
   if (!user) return <div className="p-20 text-center font-sans text-red-500 font-bold">Please log in to see your reports.</div>;
@@ -215,73 +190,72 @@ export default function Dashboard() {
         isLoading={deleting === deleteModal.reportId}
       />
       <div className="min-h-screen bg-slate-50 p-8 font-sans">
-      <div className="max-w-5xl mx-auto">
-        
-        <header className="mb-10">
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight uppercase">REPORT TRACKING</h1>
-          <p className="text-slate-500 text-sm">Showing reports for: <span className="text-blue-600 font-bold">{user.Full_Name || "Current User"}</span></p>
-        </header>
+        <div className="max-w-5xl mx-auto">
 
-        {/* Top Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 flex justify-between items-center shadow-sm">
-            <div>
-              <p className="text-slate-600 text-sm font-semibold">Total Reports</p>
-            </div>
-            <span className="text-4xl font-extrabold text-blue-600">{totalReports}</span>
-          </div>
+          <header className="mb-10">
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight uppercase">REPORT TRACKING</h1>
+            <p className="text-slate-500 text-sm">Showing reports for: <span className="text-blue-600 font-bold">{user.Full_Name || user.full_name || "Current User"}</span></p>
+          </header>
 
-          <div className="bg-green-50 p-6 rounded-2xl border border-green-100 flex justify-between items-center shadow-sm">
-            <div>
-              <p className="text-slate-600 text-sm font-semibold">Forwarded</p>
-            </div>
-            <span className="text-4xl font-extrabold text-green-600">{forwarded}</span>
-          </div>
-
-          <div className="bg-orange-50 p-6 rounded-2xl border border-orange-100 flex justify-between items-center shadow-sm">
-            <div>
-              <p className="text-slate-600 text-sm font-semibold">In Progress</p>
-            </div>
-            <span className="text-4xl font-extrabold text-orange-600">{inProgress}</span>
-          </div>
-        </div>
-
-        <h2 className="text-lg font-bold text-slate-800 mb-6">Recent Reports</h2>
-        
-        <div className="space-y-4">
-          {reports.length > 0 ? (
-            reports.map((report) => (
-              <div key={report.id} className="bg-white p-5 rounded-2xl border border-slate-200 flex items-center justify-between shadow-sm">
-                <div className="flex items-center gap-5">
-                  <div className="w-12 h-12 bg-slate-900 rounded-xl flex items-center justify-center text-white text-xl">🎯</div>
-                  <div>
-                    <h3 className="font-bold text-slate-900">Report #{report.id}</h3>
-                    <p className="text-[10px] text-slate-400 uppercase tracking-widest">{report.type}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <span className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase ${
-                    report.status === 'Forwarded' ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'
-                  }`}>
-                    {report.status || 'PENDING'}
-                  </span>
-                  <button
-                    onClick={() => setDeleteModal({ isOpen: true, reportId: report.id })}
-                    className="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
-                  >
-                    🗑️ Delete
-                  </button>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="bg-white p-12 text-center rounded-2xl border border-dashed border-slate-300 text-slate-400 italic">
-              No reports found for this account. Submit a report to see it here.
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm font-medium">
+              {error}
             </div>
           )}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+            <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 flex justify-between items-center shadow-sm">
+              <p className="text-slate-600 text-sm font-semibold">Total Reports</p>
+              <span className="text-4xl font-extrabold text-blue-600">{totalReports}</span>
+            </div>
+            <div className="bg-green-50 p-6 rounded-2xl border border-green-100 flex justify-between items-center shadow-sm">
+              <p className="text-slate-600 text-sm font-semibold">Forwarded</p>
+              <span className="text-4xl font-extrabold text-green-600">{forwarded}</span>
+            </div>
+            <div className="bg-orange-50 p-6 rounded-2xl border border-orange-100 flex justify-between items-center shadow-sm">
+              <p className="text-slate-600 text-sm font-semibold">In Progress</p>
+              <span className="text-4xl font-extrabold text-orange-600">{inProgress}</span>
+            </div>
+          </div>
+
+          <h2 className="text-lg font-bold text-slate-800 mb-6">Recent Reports</h2>
+
+          <div className="space-y-4">
+            {reports.length > 0 ? (
+              reports.map((report) => (
+                <div key={report.id} className="bg-white p-5 rounded-2xl border border-slate-200 flex items-center justify-between shadow-sm">
+                  <div className="flex items-center gap-5">
+                    <div className="w-12 h-12 bg-slate-900 rounded-xl flex items-center justify-center text-white text-xl">🎯</div>
+                    <div>
+                      <h3 className="font-bold text-slate-900">Report #{report.id}</h3>
+                      <p className="text-[10px] text-slate-400 uppercase tracking-widest">{report.type}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase ${
+                      (report.status === 'forwarded' || report.Status === 'Forwarded')
+                        ? 'bg-green-100 text-green-600'
+                        : 'bg-orange-100 text-orange-600'
+                    }`}>
+                      {report.status || report.Status || 'PENDING'}
+                    </span>
+                    <button
+                      onClick={() => setDeleteModal({ isOpen: true, reportId: report.id })}
+                      className="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
+                    >
+                      🗑️ Delete
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="bg-white p-12 text-center rounded-2xl border border-dashed border-slate-300 text-slate-400 italic">
+                No reports found for this account. Submit a report to see it here.
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
     </>
   );
 }
