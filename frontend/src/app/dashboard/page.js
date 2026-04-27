@@ -154,12 +154,15 @@ export default function Dashboard() {
         
         const userId = parsedUser.UserID;
         
-        if (userId !== null && userId !== undefined) {
-          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/reports?userId=${userId}`);
-          const data = await response.json();
-          if (Array.isArray(data)) {
-            setReports(data);
-          }
+        try {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/reports?userId=${userId}`);
+  const data = await response.json();
+  if (Array.isArray(data)) {
+    setReports(data);
+  }
+} catch (err) {
+  console.error('Failed to fetch reports:', err);
+}
         }
       }
       setLoading(false);
