@@ -98,7 +98,7 @@ export default function AuthoritiesPage() {
       if (savedUser) {
         const parsedUser = JSON.parse(savedUser);
         setUser(parsedUser);
-        const res = await fetch(`http://localhost:3001/api/authority?userId=${parsedUser.UserID}`);
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/authority?userId=${parsedUser.UserID}`);
         if (res.ok) {
           const data = await res.json();
           setAuthorities(data);
@@ -159,7 +159,7 @@ export default function AuthoritiesPage() {
     }
 
     try {
-      const url = editingId ? `http://localhost:3001/api/authority/${editingId}` : 'http://localhost:3001/api/authority';
+      const url = editingId ? `${process.env.NEXT_PUBLIC_API_URL}/api/authority/${editingId}` : '${process.env.NEXT_PUBLIC_API_URL}/api/authority';
       const method = editingId ? 'PUT' : 'POST';
 
       const payload = {
@@ -202,7 +202,7 @@ export default function AuthoritiesPage() {
   const handleDelete = async (id) => {
     setDeleteModal({ show: false, id: null });
     try {
-      const res = await fetch(`http://localhost:3001/api/authority/${id}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/authority/${id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user?.UserID })

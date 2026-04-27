@@ -60,7 +60,7 @@ export default function FileNewReport() {
       if (savedUser) {
         try {
           const user = JSON.parse(savedUser);
-          const response = await fetch(`http://localhost:3001/api/authority?userId=${user.UserID}`);
+          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/authority?userId=${user.UserID}`);
           const data = await response.json();
           if (Array.isArray(data)) {
             setAuthorities(data);
@@ -243,7 +243,7 @@ export default function FileNewReport() {
     if (file) data.append('evidence', file);
 
     try {
-      const res = await fetch('http://localhost:3001/api/report', { method: 'POST', body: data });
+      const res = await fetch('${process.env.NEXT_PUBLIC_API_URL}/api/report', { method: 'POST', body: data });
       if (res.ok) {
         const reportResponse = await res.json();
         const reportId = reportResponse.id || reportResponse.reportId;
@@ -251,7 +251,7 @@ export default function FileNewReport() {
         // If authority is selected, forward the report
         if (formData.forwardToAuthority && reportId) {
           try {
-            const forwardRes = await fetch('http://localhost:3001/api/fix', {
+            const forwardRes = await fetch('${process.env.NEXT_PUBLIC_API_URL}/api/fix', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({

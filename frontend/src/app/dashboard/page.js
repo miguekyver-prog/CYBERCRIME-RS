@@ -155,7 +155,7 @@ export default function Dashboard() {
         const userId = parsedUser.UserID;
         
         if (userId !== null && userId !== undefined) {
-          const response = await fetch(`http://localhost:3001/api/reports?userId=${userId}`);
+          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/reports?userId=${userId}`);
           const data = await response.json();
           if (Array.isArray(data)) {
             setReports(data);
@@ -171,7 +171,7 @@ export default function Dashboard() {
   const handleDeleteReport = async (reportId) => {
     setDeleting(reportId);
     try {
-      const response = await fetch(`http://localhost:3001/api/reports/${reportId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/reports/${reportId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.UserID })

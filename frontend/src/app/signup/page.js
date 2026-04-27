@@ -27,7 +27,7 @@ export default function SignupPage() {
   const [googleReady, setGoogleReady] = useState(false);
 
   // ✅ FIX: Use environment variable instead of hard-coded localhost
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || '${process.env.NEXT_PUBLIC_API_URL}';
 
   const handleGoogleSignupCallback = useCallback(async (response) => {
     console.log('🔐 Google signup callback triggered');

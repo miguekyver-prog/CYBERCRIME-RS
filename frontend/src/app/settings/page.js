@@ -163,7 +163,7 @@ export default function AccountSettings() {
     }
 
     try {
-        const response = await fetch('http://localhost:3001/api/settings', {
+        const response = await fetch('${process.env.NEXT_PUBLIC_API_URL}/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
