@@ -40,7 +40,7 @@ function Toast({ toasts }) {
 }
 
 export default function FileNewReport() {
-  useProtectedRoute(); // Redirect to login if not authenticated
+  useProtectedRoute();
   const [formData, setFormData] = useState({
     fullName: '', email: '', reportType: '', incidentDate: '',
     amount: '', description: '', suspiciousInfo: '', contactInfo: '', forwardToAuthority: '', isAnonymous: false
@@ -53,7 +53,6 @@ export default function FileNewReport() {
   const fileInputRef = useRef(null);
   const router = useRouter();
 
-  // Load authorities on mount
   useEffect(() => {
     const loadAuthorities = async () => {
       const savedUser = localStorage.getItem('user');
@@ -122,99 +121,38 @@ export default function FileNewReport() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Only require fullName and email if not anonymous
     if (!formData.isAnonymous) {
-      if (!formData.fullName) {
-        showToast("Please enter your full name.", 'error');
-        return;
-      }
-
-      if (!validateFullName(formData.fullName)) {
-        showToast("Full name must be between 2 and 100 characters.", 'error');
-        return;
-      }
-
-      if (!formData.email) {
-        showToast("Please enter your email address.", 'error');
-        return;
-      }
-
-      if (!validateEmail(formData.email)) {
-        showToast("Please enter a valid email address.", 'error');
-        return;
-      }
+      if (!formData.fullName) { showToast("Please enter your full name.", 'error'); return; }
+      if (!validateFullName(formData.fullName)) { showToast("Full name must be between 2 and 100 characters.", 'error'); return; }
+      if (!formData.email) { showToast("Please enter your email address.", 'error'); return; }
+      if (!validateEmail(formData.email)) { showToast("Please enter a valid email address.", 'error'); return; }
     }
 
-    if (!formData.reportType) {
-      showToast("Please select a report type.", 'error');
-      return;
-    }
-
-    if (!formData.incidentDate) {
-      showToast("Please enter the incident date.", 'error');
-      return;
-    }
+    if (!formData.reportType) { showToast("Please select a report type.", 'error'); return; }
+    if (!formData.incidentDate) { showToast("Please enter the incident date.", 'error'); return; }
 
     const incidentDate = new Date(formData.incidentDate);
     const today = new Date();
     today.setHours(23, 59, 59, 999);
-    if (incidentDate > today) {
-      showToast("Incident date cannot be in the future.", 'error');
-      return;
-    }
+    if (incidentDate > today) { showToast("Incident date cannot be in the future.", 'error'); return; }
 
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-    if (incidentDate < oneYearAgo) {
-      showToast("Incident date cannot be more than 1 year in the past.", 'error');
-      return;
-    }
+    if (incidentDate < oneYearAgo) { showToast("Incident date cannot be more than 1 year in the past.", 'error'); return; }
 
     const financialCrimes = ['Investment Scam', 'Other'];
     if (financialCrimes.includes(formData.reportType) && !formData.amount.trim()) {
-      showToast(`Amount is required for ${formData.reportType} reports.`, 'error');
-      return;
+      showToast(`Amount is required for ${formData.reportType} reports.`, 'error'); return;
     }
 
-    if (formData.amount && !validateAmount(formData.amount)) {
-      showToast("Please enter a valid amount (e.g., 1000 or 1000.50).", 'error');
-      return;
-    }
-
-    if (!formData.description.trim()) {
-      showToast("Description is required.", 'error');
-      return;
-    }
-
-    if (formData.description.trim().length < 10) {
-      showToast("Description must be at least 10 characters.", 'error');
-      return;
-    }
-
-    if (formData.description.trim().length > 5000) {
-      showToast("Description must not exceed 5000 characters.", 'error');
-      return;
-    }
-
-    if (formData.suspiciousInfo && !validateUrl(formData.suspiciousInfo)) {
-      showToast("Please enter a valid email or URL.", 'error');
-      return;
-    }
-
-    if (formData.contactInfo && !validateContactInfo(formData.contactInfo)) {
-      showToast("Please enter a valid email or phone number for contact information.", 'error');
-      return;
-    }
-
-    if (!formData.suspiciousInfo && !formData.contactInfo && !file) {
-      showToast("Please provide at least one piece of evidence (URL, contact info, or file).", 'error');
-      return;
-    }
-
-    if (file && file.size > 10 * 1024 * 1024) {
-      showToast("File size must not exceed 10MB.", 'error');
-      return;
-    }
+    if (formData.amount && !validateAmount(formData.amount)) { showToast("Please enter a valid amount (e.g., 1000 or 1000.50).", 'error'); return; }
+    if (!formData.description.trim()) { showToast("Description is required.", 'error'); return; }
+    if (formData.description.trim().length < 10) { showToast("Description must be at least 10 characters.", 'error'); return; }
+    if (formData.description.trim().length > 5000) { showToast("Description must not exceed 5000 characters.", 'error'); return; }
+    if (formData.suspiciousInfo && !validateUrl(formData.suspiciousInfo)) { showToast("Please enter a valid email or URL.", 'error'); return; }
+    if (formData.contactInfo && !validateContactInfo(formData.contactInfo)) { showToast("Please enter a valid email or phone number for contact information.", 'error'); return; }
+    if (!formData.suspiciousInfo && !formData.contactInfo && !file) { showToast("Please provide at least one piece of evidence (URL, contact info, or file).", 'error'); return; }
+    if (file && file.size > 10 * 1024 * 1024) { showToast("File size must not exceed 10MB.", 'error'); return; }
 
     setLoading(true);
 
@@ -230,28 +168,26 @@ export default function FileNewReport() {
     const data = new FormData();
     data.append('userId', user.UserID || user.id);
     data.append('isAnonymous', formData.isAnonymous);
-    data.append('title', formData.reportType); // Use report type as title
+    data.append('title', formData.reportType);
     data.append('category', formData.reportType);
     data.append('description', `Date: ${formData.incidentDate} | Amt: ${formData.amount} | Target: ${formData.suspiciousInfo} | Details: ${formData.description}`);
-    data.append('authorityId', formData.forwardToAuthority); // Send as authorityId
-    
+    data.append('authorityId', formData.forwardToAuthority);
     if (!formData.isAnonymous) {
       data.append('fullName', formData.fullName.trim());
       data.append('reporterEmail', formData.email.trim());
     }
-
     if (file) data.append('evidence', file);
 
     try {
-      const res = await fetch('${process.env.NEXT_PUBLIC_API_URL}/api/report', { method: 'POST', body: data });
+      // ✅ FIXED: backticks on both fetch calls
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/report`, { method: 'POST', body: data });
       if (res.ok) {
         const reportResponse = await res.json();
         const reportId = reportResponse.id || reportResponse.reportId;
-        
-        // If authority is selected, forward the report
+
         if (formData.forwardToAuthority && reportId) {
           try {
-            const forwardRes = await fetch('${process.env.NEXT_PUBLIC_API_URL}/api/fix', {
+            const forwardRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/fix`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -260,7 +196,6 @@ export default function FileNewReport() {
                 userId: user.UserID || user.id
               })
             });
-            
             if (forwardRes.ok) {
               showToast("Report filed and forwarded successfully! Redirecting to dashboard…", 'success');
             } else {
@@ -273,7 +208,7 @@ export default function FileNewReport() {
         } else {
           showToast("Report filed successfully! Redirecting to dashboard…", 'success');
         }
-        
+
         setTimeout(() => router.push('/dashboard'), 2000);
       } else {
         const errorText = await res.json();
