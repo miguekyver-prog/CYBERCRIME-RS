@@ -10,7 +10,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { sendReportEmail } from './lib/email.js';
 
 // Load environment variables
-dotenv.config({ path: '.env.local' });
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
