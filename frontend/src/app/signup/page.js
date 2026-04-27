@@ -1,377 +1,633 @@
-"use client";
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { useAuthRedirect } from '../../hooks/useAuth';
+import fs from 'fs';
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { db } from './lib/db.js';
+import bcrypt from 'bcryptjs';
+import multer from 'multer';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { OAuth2Client } from 'google-auth-library';
+import { sendReportEmail } from './lib/email.js';
 
-export default function SignupPage() {
-  const router = useRouter();
-  useAuthRedirect();
+// Load environment variables
+dotenv.config();
 
-  const googleInitialized = useRef(false);
-  const callbackRef = useRef(null);
-  const initTimeoutRef = useRef(null);
+const app = express();
+const PORT = process.env.PORT || 3001;
 
-  const [formData, setFormData] = useState({
-    fullName: '',
-    email: '',
-    contactNumber: '',
-    password: '',
-    confirm: '',
-  });
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [googleReady, setGoogleReady] = useState(false);
+// Set up file uploads directory
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsDir = path.join(__dirname, 'uploads');
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || '${process.env.NEXT_PUBLIC_API_URL}';
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
-  const handleGoogleSignupCallback = useCallback(async (response) => {
-    setError('');
-    setSuccess('');
-    setLoading(true);
-    try {
-      if (!response.credential) {
-        throw new Error('No credential received from Google');
-      }
+// Configure multer for file uploads
+const upload = multer({
+  dest: uploadsDir,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    cb(null, true);
+  }
+});
 
-      const res = await fetch(`${API_URL}/api/google-login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: response.credential }),
-      });
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
-      const data = await res.json();
-      if (res.ok) {
-        setSuccess('Google signup successful! Redirecting...');
-        localStorage.setItem('user', JSON.stringify(data.user));
-        setTimeout(() => router.push('/dashboard'), 1500);
-      } else {
-        setError(data.error || 'Google sign-up failed');
-      }
-    } catch (err) {
-      setError(err.message || 'Server connection error');
-    } finally {
-      setLoading(false);
+// Initialize Google OAuth Client
+const googleClient = new OAuth2Client();
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', message: 'Backend is running' });
+});
+
+// ============= LOGIN ROUTE =============
+const validateEmail = (email) => {
+  const emailRegex = /^[a-zA-Z0-9._+%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  return emailRegex.test(email.toLowerCase());
+};
+
+app.post('/api/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !email.trim()) {
+      return res.status(400).json({ error: 'Email is required' });
     }
-  }, [router, API_URL]);
 
-  useEffect(() => {
-    callbackRef.current = handleGoogleSignupCallback;
-  }, [handleGoogleSignupCallback]);
+    if (!validateEmail(email)) {
+      return res.status(400).json({ error: 'Please provide a valid email address' });
+    }
 
-  useEffect(() => {
-    if (googleInitialized.current) return;
+    if (!password) {
+      return res.status(400).json({ error: 'Password is required' });
+    }
 
-    let attemptCount = 0;
-    const maxAttempts = 50;
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
 
-    const initializeGoogle = () => {
-      attemptCount++;
+    if (password.length > 128) {
+      return res.status(400).json({ error: 'Password must not exceed 128 characters' });
+    }
 
-      if (window.google && window.google.accounts && window.google.accounts.id) {
-        try {
-          window.google.accounts.id.initialize({
-            client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
-            callback: (response) => {
-              if (callbackRef.current) {
-                callbackRef.current(response);
-              }
-            },
-            auto_select: false,
-            use_fedcm_for_prompt: false,
-          });
+    console.log("=== LOGIN ATTEMPT ===");
+    console.log("Email:", email);
 
-          googleInitialized.current = true;
-          setGoogleReady(true);
-        } catch (error) {
-          console.error('❌ Google initialization error:', error);
-          setGoogleReady(true);
-        }
-      } else if (attemptCount < maxAttempts) {
-        initTimeoutRef.current = setTimeout(initializeGoogle, 100);
-      } else {
-        setGoogleReady(true);
+    const [users] = await db.execute(
+      'SELECT UserID, full_name AS Full_Name, Email AS email, Password AS password FROM `user` WHERE Email = ? OR email = ?',
+      [email, email]
+    );
+
+    if (users.length === 0) {
+      console.log("❌ No user found with email:", email);
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const user = users[0];
+    const passwordMatch = await bcrypt.compare(password, user.password);
+
+    if (!passwordMatch) {
+      console.log("❌ Password mismatch for email:", email);
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    console.log("✅ Login successful for user:", user.Full_Name);
+    res.json({
+      message: "Login successful",
+      userId: user.UserID,
+      fullName: user.Full_Name,
+      email: user.email
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============= GOOGLE LOGIN ROUTE =============
+app.post('/api/google-login', async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      console.warn('⚠️ No token provided in request');
+      return res.status(400).json({ error: 'Token is required' });
+    }
+
+    console.log("🔍 Verifying Google token...");
+    const clientId = '862494866742-0sb0mvdcjuidrvi9sq7k28lkb8mcap4a.apps.googleusercontent.com';
+    console.log("📋 Client ID:", clientId);
+    console.log("🔐 Token length:", token.length);
+
+    let ticket;
+    try {
+      ticket = await googleClient.verifyIdToken({
+        idToken: token,
+        audience: clientId
+      });
+      console.log("✅ Token verified successfully");
+    } catch (verifyError) {
+      console.error("❌ Token verification failed:", verifyError.message);
+      return res.status(401).json({ error: 'Token verification failed: ' + verifyError.message });
+    }
+
+    const payload = ticket.getPayload();
+    const googleId = payload.sub;
+    const email = payload.email;
+    const fullName = payload.name || email.split('@')[0];
+    const picture = payload.picture;
+
+    console.log("✅ Google Token verified for:", email);
+    console.log("👤 Full Name:", fullName);
+    console.log("🔑 Google ID:", googleId);
+
+    let existingUsers;
+    try {
+      [existingUsers] = await db.execute(
+        'SELECT UserID, Full_Name, Email, Contact_Number FROM user WHERE Email = ?',
+        [email]
+      );
+      console.log("📊 Database query successful, found", existingUsers.length, "user(s)");
+    } catch (dbError) {
+      console.error("❌ Database query failed:", dbError.message);
+      return res.status(500).json({ error: 'Database error: ' + dbError.message });
+    }
+
+    let user;
+    if (existingUsers.length > 0) {
+      user = existingUsers[0];
+      console.log("✅ Existing user logged in via Google:", fullName);
+    } else {
+      try {
+        const hashedPassword = await bcrypt.hash(Math.random().toString(36).slice(-15), 10);
+        const username = email.split('@')[0] + '_' + Math.random().toString(36).slice(2, 6);
+
+        console.log("🆕 Creating new user...");
+        const [insertResult] = await db.execute(
+          'INSERT INTO user (Full_Name, Email, Username, Password) VALUES (?, ?, ?, ?)',
+          [fullName, email, username, hashedPassword]
+        );
+
+        user = {
+          UserID: insertResult.insertId,
+          Full_Name: fullName,
+          Email: email,
+          Contact_Number: null
+        };
+        console.log("✅ New user created via Google, ID:", user.UserID);
+      } catch (insertError) {
+        console.error("❌ User creation failed:", insertError.message);
+        return res.status(500).json({ error: 'User creation failed: ' + insertError.message });
       }
-    };
+    }
 
-    setTimeout(initializeGoogle, 100);
-
-    return () => {
-      if (initTimeoutRef.current) {
-        clearTimeout(initTimeoutRef.current);
+    res.json({
+      message: 'Google login successful',
+      user: {
+        UserID: user.UserID,
+        Full_Name: user.Full_Name,
+        Email: user.Email,
+        Contact_Number: user.Contact_Number
       }
-    };
-  }, []);
+    });
+  } catch (error) {
+    console.error("❌ Google login error:", error.message);
+    res.status(401).json({ error: 'Invalid token or Google login failed: ' + error.message });
+  }
+});
 
-  useEffect(() => {
-    if (!googleReady) return;
-    if (!window.google?.accounts?.id) return;
+// ============= SIGNUP ROUTE =============
+app.post('/api/signup', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const full_name = req.body.full_name || req.body.fullName || req.body.name;
 
-    const renderBtn = () => {
-      const btnElement = document.getElementById('google-signup-btn');
-      if (btnElement) {
-        window.google.accounts.id.renderButton(btnElement, {
-          type: 'standard',
-          size: 'large',
-          theme: 'outline',
-          locale: 'en',
-          width: btnElement.offsetWidth || 360,
+    if (!email || !email.trim()) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    if (!validateEmail(email)) {
+      return res.status(400).json({ error: 'Please provide a valid email address' });
+    }
+
+    if (!password || password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
+    if (!full_name || !full_name.trim()) {
+      return res.status(400).json({ error: 'Full name is required' });
+    }
+
+    const [existing] = await db.execute(
+      'SELECT UserID FROM `user` WHERE Email = ?',
+      [email]
+    );
+
+    if (existing.length > 0) {
+      return res.status(400).json({ error: 'Email already registered' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await db.execute(
+      'INSERT INTO `user` (Email, Password, full_name, created_at) VALUES (?, ?, ?, NOW())',
+      [email, hashedPassword, full_name]
+    );
+
+    res.json({ message: 'Signup successful. You can now login.' });
+  } catch (error) {
+    console.error("Signup error:", error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============= FORGOT PASSWORD ROUTE =============
+app.post('/api/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email || !validateEmail(email)) {
+      return res.status(400).json({ error: 'Valid email is required' });
+    }
+
+    const [users] = await db.execute(
+      'SELECT UserID, Email FROM `user` WHERE Email = ?',
+      [email]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({ error: 'No account found with this email' });
+    }
+
+    const resetToken = Math.random().toString(36).substring(2, 15) +
+                       Math.random().toString(36).substring(2, 15);
+
+    await db.execute(
+      'UPDATE `user` SET reset_token = ?, reset_token_expires = DATE_ADD(NOW(), INTERVAL 1 HOUR) WHERE UserID = ?',
+      [resetToken, users[0].UserID]
+    );
+
+    const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
+
+    await sendReportEmail({
+      authorityEmail: email,
+      authorityName: 'User',
+      subject: 'Password Reset Request',
+      message: `Click the link below to reset your password:\n\n${resetLink}\n\nThis link expires in 1 hour.`
+    });
+
+    res.json({ message: 'Password reset link sent to your email' });
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============= RESET PASSWORD ROUTE =============
+app.post('/api/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    if (!token || !password || password.length < 8) {
+      return res.status(400).json({ error: 'Valid token and password (8+ characters) required' });
+    }
+
+    const [users] = await db.execute(
+      'SELECT UserID FROM `user` WHERE reset_token = ? AND reset_token_expires > NOW()',
+      [token]
+    );
+
+    if (users.length === 0) {
+      return res.status(400).json({ error: 'Invalid or expired reset token' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await db.execute(
+      'UPDATE `user` SET Password = ?, reset_token = NULL, reset_token_expires = NULL WHERE UserID = ?',
+      [hashedPassword, users[0].UserID]
+    );
+
+    res.json({ message: 'Password reset successful' });
+  } catch (error) {
+    console.error("Reset password error:", error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============= REPORT ROUTES =============
+app.post('/api/report', upload.single('evidence'), async (req, res) => {
+  try {
+    const { userId, isAnonymous, title, description, category } = req.body;
+    const authorityId = req.body.authorityId && req.body.authorityId !== '' ? req.body.authorityId : null;
+
+    if (!title || !description) {
+      return res.status(400).json({ error: 'Title and description are required' });
+    }
+
+    let evidencePath = null;
+    if (req.file) {
+      evidencePath = `/uploads/${req.file.filename}`;
+    }
+
+    const [result] = await db.execute(
+      'INSERT INTO report (Incident_Description, Is_Anonymous, Incident_Type, AuthorityID, Status, Evidence_URL, UserID) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [description, isAnonymous ? 1 : 0, category || 'general', authorityId, 'Pending', evidencePath, userId]
+    );
+
+    const reportId = result.insertId;
+
+    if (authorityId) {
+      const [authority] = await db.execute(
+        'SELECT Email, Agency_Name FROM authority WHERE AuthorityID = ?',
+        [authorityId]
+      );
+
+      if (authority.length > 0) {
+        await sendReportEmail({
+          authorityEmail: authority[0].Email,
+          authorityName: authority[0].Agency_Name,
+          title: title,
+          description: description,
+          reportId: reportId
         });
       }
-    };
-
-    setTimeout(renderBtn, 100);
-  }, [googleReady]);
-
-  const validateEmail = (email) => {
-    const emailRegex = /^[a-zA-Z0-9._+%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    return emailRegex.test(email.toLowerCase());
-  };
-
-  const handleSignup = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSuccess('');
-
-    // ===== DEBUG: Open browser console (F12) to see these logs =====
-    console.log('=== SIGNUP DEBUG ===');
-    console.log('fullName value:', formData.fullName);
-    console.log('fullName trimmed:', formData.fullName.trim());
-    console.log('fullName length:', formData.fullName.length);
-    // ===============================================================
-
-    if (!formData.fullName.trim()) return setError('Full name is required');
-    if (formData.fullName.trim().length < 2) return setError('Full name must be at least 2 characters');
-    if (!formData.email.trim()) return setError('Email is required');
-    if (!validateEmail(formData.email)) return setError('Please enter a valid email address');
-    if (!formData.password) return setError('Password is required');
-    if (formData.password.length < 8) return setError('Password must be at least 8 characters');
-    if (formData.password.length > 128) return setError('Password must not exceed 128 characters');
-    if (!formData.confirm) return setError('Please confirm your password');
-    if (formData.password !== formData.confirm) return setError('Passwords do not match');
-
-    setLoading(true);
-    try {
-      const payload = {
-        full_name: formData.fullName,
-        email: formData.email,
-        contactNumber: formData.contactNumber,
-        password: formData.password,
-      };
-
-      // ===== DEBUG: Check what's being sent to backend =====
-      console.log('Payload sent to backend:', payload);
-      // =====================================================
-
-      const res = await fetch(`${API_URL}/api/signup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        setSuccess('Account created successfully! Redirecting to login...');
-        setTimeout(() => router.push('/'), 1500);
-      } else {
-        const data = await res.json();
-        // ===== DEBUG: Check backend error response =====
-        console.log('Backend error response:', data);
-        // ===============================================
-        setError(data.error || 'Failed to create account');
-      }
-    } catch {
-      setError('Server connection lost');
-    } finally {
-      setLoading(false);
     }
-  };
 
-  const inputStyle =
-    'w-full border border-slate-300 rounded-xl py-3.5 px-5 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all placeholder:text-slate-400 font-medium bg-slate-50 hover:bg-white';
-  const labelStyle = 'block text-sm font-semibold text-slate-800 mb-2.5';
+    res.json({ message: 'Report submitted successfully', reportId });
+  } catch (error) {
+    console.error("Report submission error:", error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-indigo-50 px-6 font-sans py-8">
-      <div className="w-full max-w-md">
+app.get('/api/reports', async (req, res) => {
+  try {
+    const [reports] = await db.execute(
+      'SELECT ReportID as id, Incident_Description as description, Incident_Type as type, Status as status, Date_Submitted as created_at FROM report ORDER BY Date_Submitted DESC'
+    );
+    res.json(reports);
+  } catch (error) {
+    console.error("Fetch reports error:", error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
-        {/* Header */}
-        <div className="text-center mb-10">
-          <div className="inline-block mb-4 p-3 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-2xl">
-            <span className="text-4xl">🛡️</span>
-          </div>
-          <h1 className="text-4xl font-bold text-slate-900 mb-2 tracking-tight">CyberSafe</h1>
-          <p className="text-slate-600 font-medium text-lg">Create Your Account</p>
-        </div>
+app.get('/api/reports/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [reports] = await db.execute(
+      'SELECT ReportID as id, Incident_Description as description, Incident_Type as type, Status as status, Date_Submitted as created_at, Evidence_URL, UserID, AuthorityID, Is_Anonymous FROM report WHERE ReportID = ?',
+      [id]
+    );
 
-        <div className="bg-white rounded-2xl shadow-lg shadow-blue-100 border border-slate-100 overflow-hidden">
-          <div className="px-8 py-8">
+    if (reports.length === 0) {
+      return res.status(404).json({ error: 'Report not found' });
+    }
 
-            {/* Error Message */}
-            {error && (
-              <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-lg">
-                <div className="flex items-start gap-3">
-                  <span className="text-2xl mt-0.5">⚠️</span>
-                  <div>
-                    <p className="text-red-900 font-semibold text-sm">Error</p>
-                    <p className="text-red-700 text-sm mt-0.5">{error}</p>
-                  </div>
-                </div>
-              </div>
-            )}
+    res.json(reports[0]);
+  } catch (error) {
+    console.error("Fetch report error:", error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
-            {/* Success Message */}
-            {success && (
-              <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-500 rounded-lg">
-                <div className="flex items-start gap-3">
-                  <span className="text-2xl mt-0.5">✓</span>
-                  <div>
-                    <p className="text-green-900 font-semibold text-sm">Success</p>
-                    <p className="text-green-700 text-sm mt-0.5">{success}</p>
-                  </div>
-                </div>
-              </div>
-            )}
+// ============= AUTHORITY ROUTES =============
+app.get('/api/authority', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    let query = 'SELECT AuthorityID, Agency_Name, Email, Contact_Person, Phone FROM authority';
+    const params = [];
 
-            <form onSubmit={handleSignup} className="space-y-5">
+    if (userId) {
+      query += ' WHERE user_id = ?';
+      params.push(userId);
+    }
 
-              {/* Full Name */}
-              <div>
-                <label className={labelStyle}>Full Name</label>
-                <div className="relative group">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg group-hover:text-blue-500 transition-colors">👤</span>
-                  <input
-                    type="text"
-                    required
-                    value={formData.fullName}
-                    onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                    className={`${inputStyle} pl-12`}
-                    placeholder="John Doe"
-                  />
-                </div>
-              </div>
+    const [authorities] = await db.execute(query, params);
+    res.json(authorities);
+  } catch (error) {
+    console.error("Fetch authorities error:", error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
-              {/* Email */}
-              <div>
-                <label className={labelStyle}>Email Address</label>
-                <div className="relative group">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg group-hover:text-blue-500 transition-colors">📧</span>
-                  <input
-                    type="email"
-                    required
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className={`${inputStyle} pl-12`}
-                    placeholder="your@email.com"
-                  />
-                </div>
-              </div>
+app.get('/api/authority/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [authority] = await db.execute(
+      'SELECT * FROM authority WHERE AuthorityID = ?',
+      [id]
+    );
 
-              {/* Password */}
-              <div>
-                <label className={labelStyle}>Password</label>
-                <div className="relative group">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg group-hover:text-blue-500 transition-colors">🔐</span>
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className={`${inputStyle} pl-12 pr-12`}
-                    placeholder="••••••••"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                  >
-                    {showPassword ? '👁️' : '👁️‍🗨️'}
-                  </button>
-                </div>
-              </div>
+    if (authority.length === 0) {
+      return res.status(404).json({ error: 'Authority not found' });
+    }
 
-              {/* Confirm Password */}
-              <div>
-                <label className={labelStyle}>Confirm Password</label>
-                <div className="relative group">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg group-hover:text-blue-500 transition-colors">🔐</span>
-                  <input
-                    type={showConfirm ? 'text' : 'password'}
-                    required
-                    value={formData.confirm}
-                    onChange={(e) => setFormData({ ...formData, confirm: e.target.value })}
-                    className={`${inputStyle} pl-12 pr-12`}
-                    placeholder="••••••••"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirm(!showConfirm)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                  >
-                    {showConfirm ? '👁️' : '👁️‍🗨️'}
-                  </button>
-                </div>
-              </div>
+    res.json(authority[0]);
+  } catch (error) {
+    console.error("Fetch authority error:", error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
-              {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold py-3.5 rounded-xl hover:from-blue-700 hover:to-blue-800 disabled:from-slate-400 disabled:to-slate-500 transition-all shadow-lg shadow-blue-200 hover:shadow-blue-300 uppercase tracking-wider text-sm relative overflow-hidden mt-8"
-              >
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <span className="inline-block animate-spin">⏳</span>
-                    Creating Account...
-                  </span>
-                ) : (
-                  'Create Account'
-                )}
-              </button>
-            </form>
+app.post('/api/authority', async (req, res) => {
+  try {
+    const { agencyName, email, contactPerson, phone, userId } = req.body;
 
-            {/* Divider */}
-            <div className="flex items-center gap-4 my-8">
-              <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent"></div>
-              <span className="text-slate-400 font-semibold text-xs uppercase tracking-wider">Or</span>
-              <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent"></div>
-            </div>
+    if (!agencyName || !email) {
+      return res.status(400).json({ error: 'Agency name and email are required' });
+    }
 
-            {!googleReady ? (
-              <div className="w-full flex justify-center py-4">
-                <div className="text-center">
-                  <div className="inline-block animate-spin mb-2">
-                    <span className="text-3xl">⏳</span>
-                  </div>
-                  <p className="text-slate-500 text-sm">Loading Google Sign-up...</p>
-                </div>
-              </div>
-            ) : (
-              <div
-                id="google-signup-btn"
-                className="w-full flex justify-center mb-4"
-                style={{ minHeight: '44px', minWidth: '100%' }}
-              ></div>
-            )}
-          </div>
+    const [result] = await db.execute(
+      'INSERT INTO authority (Agency_Name, Email, Contact_Person, Phone, user_id) VALUES (?, ?, ?, ?, ?)',
+      [agencyName, email, contactPerson || null, phone || null, userId]
+    );
 
-          {/* Footer */}
-          <div className="px-8 py-6 bg-slate-50 border-t border-slate-100">
-            <p className="text-center text-slate-600 text-sm font-medium">
-              Already have an account?{' '}
-              <Link href="/" className="text-blue-600 font-bold hover:text-blue-700 hover:underline transition-colors">
-                Log in
-              </Link>
-            </p>
-          </div>
-        </div>
+    res.status(201).json({
+      AuthorityID: result.insertId,
+      Agency_Name: agencyName,
+      Email: email,
+      Contact_Person: contactPerson,
+      Phone: phone
+    });
+  } catch (error) {
+    console.error("Create authority error:", error);
+    res.status(500).json({ error: 'Failed to create authority' });
+  }
+});
 
-        <p className="text-center text-slate-500 text-xs mt-8 font-medium">
-          Protected by industry-leading security standards
-        </p>
-      </div>
-    </div>
-  );
-}
+app.put('/api/authority/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { agencyName, email, contactPerson, phone } = req.body;
+
+    if (!agencyName || !email) {
+      return res.status(400).json({ error: 'Agency name and email are required' });
+    }
+
+    await db.execute(
+      'UPDATE authority SET Agency_Name = ?, Email = ?, Contact_Person = ?, Phone = ? WHERE AuthorityID = ?',
+      [agencyName, email, contactPerson || null, phone || null, id]
+    );
+
+    res.json({
+      AuthorityID: id,
+      Agency_Name: agencyName,
+      Email: email,
+      Contact_Person: contactPerson,
+      Phone: phone
+    });
+  } catch (error) {
+    console.error("Update authority error:", error);
+    res.status(500).json({ error: 'Failed to update authority' });
+  }
+});
+
+app.delete('/api/authority/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.execute('DELETE FROM authority WHERE AuthorityID = ?', [id]);
+    res.json({ message: 'Authority deleted successfully' });
+  } catch (error) {
+    console.error("Delete authority error:", error);
+    res.status(500).json({ error: 'Failed to delete authority' });
+  }
+});
+
+// ============= SETTINGS ROUTES =============
+app.get('/api/settings', async (req, res) => {
+  try {
+    res.json({
+      theme: 'light',
+      language: 'en',
+      notifications: true
+    });
+  } catch (error) {
+    console.error("Settings error:", error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/settings', async (req, res) => {
+  try {
+    const { userId, firstName, lastName, fullName, email, phone, password } = req.body;
+
+    if (!userId || !email) {
+      return res.status(400).json({ error: 'User ID and email are required' });
+    }
+
+    // Support both fullName (single field) and firstName + lastName (two fields)
+    let resolvedName = null;
+    if (fullName && fullName.trim()) {
+      resolvedName = fullName.trim();
+    } else if (firstName || lastName) {
+      resolvedName = `${firstName || ''} ${lastName || ''}`.trim();
+    }
+
+    if (!resolvedName) {
+      return res.status(400).json({ error: 'Full name is required' });
+    }
+
+    if (password) {
+      if (password.length < 8) {
+        return res.status(400).json({ error: 'Password must be at least 8 characters' });
+      }
+
+      // ✅ Fixed: explicit separate query — no more splice() bug
+      const hashedPassword = await bcrypt.hash(password, 10);
+      await db.execute(
+        'UPDATE user SET Full_Name = ?, Email = ?, Contact_Number = ?, Password = ? WHERE UserID = ?',
+        [resolvedName, email, phone || null, hashedPassword, userId]
+      );
+    } else {
+      await db.execute(
+        'UPDATE user SET Full_Name = ?, Email = ?, Contact_Number = ? WHERE UserID = ?',
+        [resolvedName, email, phone || null, userId]
+      );
+    }
+
+    // Return updated user data so frontend can refresh its local state
+    const [updatedUser] = await db.execute(
+      'SELECT UserID, Full_Name, Email, Contact_Number FROM user WHERE UserID = ?',
+      [userId]
+    );
+
+    res.json({
+      message: 'Settings updated successfully',
+      user: updatedUser[0] || null
+    });
+  } catch (error) {
+    console.error("Update settings error:", error);
+    res.status(500).json({ error: 'Failed to update settings' });
+  }
+});
+
+// ============= FIX / FORWARD REPORT ROUTE =============
+app.post('/api/fix', async (req, res) => {
+  try {
+    const { reportId, authorityId, userId } = req.body;
+
+    if (!reportId || !authorityId) {
+      return res.status(400).json({ error: 'Report ID and Authority ID are required' });
+    }
+
+    await db.execute(
+      'UPDATE report SET AuthorityID = ?, Status = "forwarded" WHERE ReportID = ?',
+      [authorityId, reportId]
+    );
+
+    const [report] = await db.execute(
+      'SELECT Incident_Description as description FROM report WHERE ReportID = ?',
+      [reportId]
+    );
+
+    const [authority] = await db.execute(
+      'SELECT Email, Agency_Name FROM authority WHERE AuthorityID = ?',
+      [authorityId]
+    );
+
+    if (report.length > 0 && authority.length > 0) {
+      try {
+        await sendReportEmail(authority[0].Email, {
+          agencyName: authority[0].Agency_Name,
+          reportDescription: report[0].description
+        });
+      } catch (emailError) {
+        console.warn('Email notification failed:', emailError.message);
+      }
+    }
+
+    res.json({ message: 'Report forwarded successfully' });
+  } catch (error) {
+    console.error("Forward report error:", error);
+    res.status(500).json({ error: 'Failed to forward report' });
+  }
+});
+
+// ============= ERROR HANDLING =============
+app.use((req, res) => {
+  res.status(404).json({ error: 'Route not found' });
+});
+
+app.use((err, req, res, next) => {
+  console.error("Server error:", err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+// ============= START SERVER =============
+app.listen(PORT, () => {
+  console.log(`✅ Backend server running on http://localhost:${PORT}`);
+  console.log(`   API endpoints ready at http://localhost:${PORT}/api/*`);
+});
