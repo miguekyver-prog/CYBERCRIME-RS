@@ -29,7 +29,6 @@ export default function SignupPage() {
   const API_URL = process.env.NEXT_PUBLIC_API_URL || '${process.env.NEXT_PUBLIC_API_URL}';
 
   const handleGoogleSignupCallback = useCallback(async (response) => {
-    console.log('🔐 Google signup callback triggered');
     setError('');
     setSuccess('');
     setLoading(true);
@@ -38,7 +37,6 @@ export default function SignupPage() {
         throw new Error('No credential received from Google');
       }
 
-      console.log('📤 Sending token to backend...');
       const res = await fetch(`${API_URL}/api/google-login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -47,16 +45,13 @@ export default function SignupPage() {
 
       const data = await res.json();
       if (res.ok) {
-        console.log('✅ Google signup successful:', data.user);
         setSuccess('Google signup successful! Redirecting...');
         localStorage.setItem('user', JSON.stringify(data.user));
         setTimeout(() => router.push('/dashboard'), 1500);
       } else {
-        console.error('❌ Backend error:', data.error);
         setError(data.error || 'Google sign-up failed');
       }
     } catch (err) {
-      console.error('❌ Google signup error:', err);
       setError(err.message || 'Server connection error');
     } finally {
       setLoading(false);
@@ -78,16 +73,11 @@ export default function SignupPage() {
 
       if (window.google && window.google.accounts && window.google.accounts.id) {
         try {
-          console.log('🔄 Initializing Google Sign-Up...');
-
           window.google.accounts.id.initialize({
             client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
             callback: (response) => {
-              console.log('📨 Google callback triggered, credential exists:', !!response.credential);
               if (callbackRef.current) {
                 callbackRef.current(response);
-              } else {
-                console.error('❌ Callback ref is null');
               }
             },
             auto_select: false,
@@ -96,7 +86,6 @@ export default function SignupPage() {
 
           googleInitialized.current = true;
           setGoogleReady(true);
-          console.log('✅ Google Sign-Up initialized successfully');
         } catch (error) {
           console.error('❌ Google initialization error:', error);
           setGoogleReady(true);
@@ -104,7 +93,6 @@ export default function SignupPage() {
       } else if (attemptCount < maxAttempts) {
         initTimeoutRef.current = setTimeout(initializeGoogle, 100);
       } else {
-        console.warn('⚠️ Google initialization timeout - Google script may not be loaded');
         setGoogleReady(true);
       }
     };
@@ -125,7 +113,6 @@ export default function SignupPage() {
     const renderBtn = () => {
       const btnElement = document.getElementById('google-signup-btn');
       if (btnElement) {
-        console.log('🎨 Rendering Google button, width:', btnElement.offsetWidth);
         window.google.accounts.id.renderButton(btnElement, {
           type: 'standard',
           size: 'large',
@@ -149,6 +136,13 @@ export default function SignupPage() {
     setError('');
     setSuccess('');
 
+    // ===== DEBUG: Open browser console (F12) to see these logs =====
+    console.log('=== SIGNUP DEBUG ===');
+    console.log('fullName value:', formData.fullName);
+    console.log('fullName trimmed:', formData.fullName.trim());
+    console.log('fullName length:', formData.fullName.length);
+    // ===============================================================
+
     if (!formData.fullName.trim()) return setError('Full name is required');
     if (formData.fullName.trim().length < 2) return setError('Full name must be at least 2 characters');
     if (!formData.email.trim()) return setError('Email is required');
@@ -161,15 +155,21 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
+      const payload = {
+        full_name: formData.fullName,
+        email: formData.email,
+        contactNumber: formData.contactNumber,
+        password: formData.password,
+      };
+
+      // ===== DEBUG: Check what's being sent to backend =====
+      console.log('Payload sent to backend:', payload);
+      // =====================================================
+
       const res = await fetch(`${API_URL}/api/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          full_name: formData.fullName, // ✅ Fixed: was 'fullName', backend expects 'full_name'
-          email: formData.email,
-          contactNumber: formData.contactNumber,
-          password: formData.password,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (res.ok) {
@@ -177,6 +177,9 @@ export default function SignupPage() {
         setTimeout(() => router.push('/'), 1500);
       } else {
         const data = await res.json();
+        // ===== DEBUG: Check backend error response =====
+        console.log('Backend error response:', data);
+        // ===============================================
         setError(data.error || 'Failed to create account');
       }
     } catch {
