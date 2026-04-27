@@ -18,7 +18,12 @@ const PORT = process.env.PORT || 3001;
 // Set up file uploads directory
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const uploadsDir = path.join(__dirname, '../frontend/public/uploads');
+const uploadsDir = path.join(__dirname, 'uploads');
+
+import fs from 'fs';
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
 // Configure multer for file uploads
 const upload = multer({
