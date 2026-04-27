@@ -180,7 +180,15 @@ export default function FileNewReport() {
 
     try {
       // ✅ FIXED: backticks on both fetch calls
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/report`, { method: 'POST', body: data });
+      const controller = new AbortController();
+const timeout = setTimeout(() => controller.abort(), 10000);
+
+const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/report`, { 
+  method: 'POST', 
+  body: data,
+  signal: controller.signal
+});
+clearTimeout(timeout);
       if (res.ok) {
         const reportResponse = await res.json();
         const reportId = reportResponse.id || reportResponse.reportId;
