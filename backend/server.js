@@ -393,6 +393,17 @@ app.get('/api/reports', async (req, res) => {
   }
 });
 
+app.delete('/api/reports/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.body;
+    await db.execute('DELETE FROM report WHERE ReportID = ? AND UserID = ?', [id, userId]);
+    res.json({ message: 'Report deleted successfully' });
+  } catch (error) {
+    console.error("Delete report error:", error);
+    res.status(500).json({ error: 'Failed to delete report' });
+  }
+});
 app.get('/api/reports/:id', async (req, res) => {
   try {
     const { id } = req.params;
