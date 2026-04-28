@@ -179,7 +179,7 @@ export default function FileNewReport() {
     if (file) data.append('evidence', file);
 
     try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/report`, { 
+   const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/report`, { 
   method: 'POST', 
   body: data
 });
