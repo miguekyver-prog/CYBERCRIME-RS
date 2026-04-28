@@ -179,16 +179,10 @@ export default function FileNewReport() {
     if (file) data.append('evidence', file);
 
     try {
-      // ✅ FIXED: backticks on both fetch calls
-      const controller = new AbortController();
-const timeout = setTimeout(() => controller.abort(), 60000);
-
-const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/report`, { 
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/report`, { 
   method: 'POST', 
-  body: data,
-  signal: controller.signal
+  body: data
 });
-clearTimeout(timeout);
       if (res.ok) {
         const reportResponse = await res.json();
         const reportId = reportResponse.id || reportResponse.reportId;
@@ -222,9 +216,10 @@ clearTimeout(timeout);
         const errorText = await res.json();
         showToast("Submission failed: " + errorText.error, 'error');
       }
-    } catch {
-      showToast("Unable to connect to the server. Please try again.", 'error');
-    } finally {
+    } catch (err) {
+  console.error('Fetch error:', err);
+  showToast("Error: " + err.message, 'error');
+} finally {
       setLoading(false);
     }
   };
