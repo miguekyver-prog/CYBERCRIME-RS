@@ -347,24 +347,23 @@ app.post('/api/report', upload.single('evidence'), async (req, res) => {
 
     const reportId = result.insertId;
 
-    if (authorityId) {
-      const [authority] = await db.execute(
-        'SELECT Email, Agency_Name FROM authority WHERE AuthorityID = ?',
-        [authorityId]
-      );
+// Send response immediately
+res.json({ message: 'Report submitted successfully', reportId });
 
+// Email in background
+if (authorityId) {
+  db.execute('SELECT Email, Agency_Name FROM authority WHERE AuthorityID = ?', [authorityId])
+    .then(([authority]) => {
       if (authority.length > 0) {
         sendReportEmail({
           authorityEmail: authority[0].Email,
           authorityName: authority[0].Agency_Name,
-          title: title,
-          description: description,
-          reportId: reportId
+          title, description, reportId
         });
       }
-    }
-
-    res.json({ message: 'Report submitted successfully', reportId });
+    })
+    .catch(err => console.warn('Email error:', err.message));
+}
   } catch (error) {
     console.error("Report submission error:", error);
     res.status(500).json({ error: 'Internal server error' });
