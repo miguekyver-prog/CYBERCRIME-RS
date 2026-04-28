@@ -104,11 +104,13 @@ app.post('/api/login', async (req, res) => {
 
     console.log("✅ Login successful for user:", user.Full_Name);
     res.json({
-      message: "Login successful",
-      userId: user.UserID,
-      fullName: user.Full_Name,
-      email: user.email
-    });
+  message: "Login successful",
+  user: {
+    UserID: user.UserID,
+    Full_Name: user.Full_Name,
+    Email: user.email
+  }
+});
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({ error: 'Internal server error' });
