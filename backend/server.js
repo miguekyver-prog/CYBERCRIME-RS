@@ -372,9 +372,17 @@ if (authorityId) {
 
 app.get('/api/reports', async (req, res) => {
   try {
-    const [reports] = await db.execute(
-      'SELECT ReportID as id, Incident_Description as description, Incident_Type as type, Status as status, Date_Submitted as created_at FROM report ORDER BY Date_Submitted DESC'
-    );
+    const { userId } = req.query;
+    let query = 'SELECT ReportID as id, Incident_Description as description, Incident_Type as type, Status as status, Date_Submitted as created_at FROM report';
+    const params = [];
+
+    if (userId) {
+      query += ' WHERE UserID = ?';
+      params.push(userId);
+    }
+
+    query += ' ORDER BY Date_Submitted DESC';
+    const [reports] = await db.execute(query, params);
     res.json(reports);
   } catch (error) {
     console.error("Fetch reports error:", error);
