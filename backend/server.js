@@ -279,7 +279,7 @@ app.post('/api/forgot-password', async (req, res) => {
 
     const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
 
-    await sendReportEmail({
+    sendReportEmail({
       authorityEmail: email,
       authorityName: 'User',
       subject: 'Password Reset Request',
@@ -354,7 +354,7 @@ app.post('/api/report', upload.single('evidence'), async (req, res) => {
       );
 
       if (authority.length > 0) {
-        await sendReportEmail({
+        sendReportEmail({
           authorityEmail: authority[0].Email,
           authorityName: authority[0].Agency_Name,
           title: title,
@@ -599,7 +599,7 @@ app.post('/api/fix', async (req, res) => {
 
     if (report.length > 0 && authority.length > 0) {
       try {
-        await sendReportEmail(authority[0].Email, {
+        sendReportEmail(authority[0].Email, {
           agencyName: authority[0].Agency_Name,
           reportDescription: report[0].description
         });
