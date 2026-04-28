@@ -181,7 +181,7 @@ export default function FileNewReport() {
     try {
       // ✅ FIXED: backticks on both fetch calls
       const controller = new AbortController();
-const timeout = setTimeout(() => controller.abort(), 10000);
+const timeout = setTimeout(() => controller.abort(), 60000);
 
 const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/report`, { 
   method: 'POST', 
